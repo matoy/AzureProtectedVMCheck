@@ -86,8 +86,9 @@ foreach ($vm in $vms) {
 	[void]$PowerShell.AddScript({
 	    Param ($headers, $subscriptionid, $vm, $exclusionsTab)
 
+		$out = ""
 		if ($exclusionsTab -contains $vm.name) {
-			$out += "OK - $($vm.Name): VM excluded from protection check"
+			$out = "OK - $($vm.Name): VM excluded from protection check"
 		}
 		else {
 			$uri = "https://management.azure.com/Subscriptions/$subscriptionid/providers/Microsoft.RecoveryServices/locations/$($vm.location)/backupStatus?api-version=2021-10-01"
@@ -97,10 +98,10 @@ foreach ($vm in $vms) {
 				}"
 			$protectionState = Invoke-RestMethod -Method Post -Uri $uri -Body $httpBody -Headers $headers -ContentType "application/json"
 			if ($protectionState.protectionStatus -eq "Protected") {
-				$out += "OK - $($vm.Name): VM is protected"
+				$out = "OK - $($vm.Name): VM is protected"
 			}
 			else {
-				$out += "CRITICAL - $($vm.Name): VM is NOT protected"
+				$out = "CRITICAL - $($vm.Name): VM is NOT protected"
 			}
 		}
 		echo $out
