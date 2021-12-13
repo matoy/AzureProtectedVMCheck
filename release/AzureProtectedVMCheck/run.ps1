@@ -38,8 +38,6 @@ if (-not $subscriptionid) {
 }
 
 # init variables
-$alert = 0
-$body = ""
 $signature = $env:Signature
 $maxConcurrentJobs = [int] $env:MaxConcurrentJobs
 [System.Collections.ArrayList] $exclusionsTab = $exclusion.split(",")
@@ -86,7 +84,6 @@ foreach ($vm in $vms) {
 	[void]$PowerShell.AddScript({
 	    Param ($headers, $subscriptionid, $vm, $exclusionsTab)
 
-		$out = ""
 		if ($exclusionsTab -contains $vm.name) {
 			$out = "OK - $($vm.Name): VM excluded from protection check"
 		}
@@ -118,28 +115,31 @@ while ($Jobs.Runspace.IsCompleted -contains $false) {
     Write-Host (Get-date).Tostring() "Still $running jobs running..."
 	Start-Sleep 1
 }
+$alert = 0
+$body_critical = ""
+$body_ok = ""
 foreach ($job in $Jobs) {
 	$current = $job.PowerShell.EndInvoke($job.Runspace)
 	$job.PowerShell.Dispose()
 	if ($current -match "CRITICAL") {
 		$alert++
-		$body = $current + "`n" + $body
+		$body_critical += $current + "`n"
 	}
 	else {
-		$body += $current + "`n"
+		$body_ok += $current + "`n"
 	}
 }
 if ($vms.count -eq 0) {
 	$alert++
-	$body += "No VM or missing permission on subscription id: $subscriptionid`n"
+	$body_critical += "No VM or missing permission on subscription id: $subscriptionid`n"
 }
 # add ending status and signature to results
-$body += "`n$signature`n"
+$body_ok += "`n$signature`n"
 if ($alert) {
-    $body = "Status CRITICAL - No protection on $alert/$($vms.count) VM(s)!`n" + $body
+    $body = "Status CRITICAL - No protection on $alert/$($vms.count) VM(s)!`n$body_critical`n$body_ok"
 }
 else {
-    $body = "Status OK - No alert on any $($vms.count) VM(s)`n" + $body
+    $body = "Status OK - No alert on any $($vms.count) VM(s)`n$body_ok"
 }
 Write-Host $body
 
