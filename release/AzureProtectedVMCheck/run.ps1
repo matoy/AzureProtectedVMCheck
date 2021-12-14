@@ -44,6 +44,10 @@ $maxConcurrentJobs = [int] $env:MaxConcurrentJobs
 foreach ($current in ($env:AzureProtectedVMCheckGlobalExceptions).split(",")) {
 	$exclusionsTab.Add($current)
 }
+$alert = 0
+$body_critical = ""
+$body_ok = ""
+
 # connect with SPN account creds
 $tenantId = $env:TenantId
 $applicationId = $env:AzureProtectedVMCheckApplicationID
@@ -63,8 +67,22 @@ $headers = @{}
 $headers.Add("Authorization", "bearer " + "$($Token.Accesstoken)")
 $headers.Add("contenttype", "application/json")
 
-$uri = "https://management.azure.com/subscriptions/$subscriptionid/providers/Microsoft.Compute/virtualMachines?api-version=2021-07-01"
-$vms = (Invoke-RestMethod -Method Get -Uri $uri -Headers $headers).value
+Try {
+	$uri = "https://management.azure.com/subscriptions/$subscriptionid/providers/Microsoft.Compute/virtualMachines?api-version=2021-07-01"
+	$results = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers
+	$vms = $results.value
+	while ($results.nextLink) {
+		$uri = $results.nextLink
+		$results = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers
+		$vms += $results.value
+	}
+} Catch {
+    if($_.ErrorDetails.Message) {
+		$msg = ($_.ErrorDetails.Message | ConvertFrom-Json).error
+		$body_critical += $msg.code + ": " + $msg.message + "`n"
+		$alert++
+    }
+}
 
 # if many VMs, too long execution would cause an http timeout from the
 # monitoring system calling the function
@@ -93,12 +111,19 @@ foreach ($vm in $vms) {
 				  `"resourceType`": `"VM`",`
 				  `"resourceId`": `"$($vm.id)`"`
 				}"
-			$protectionState = Invoke-RestMethod -Method Post -Uri $uri -Body $httpBody -Headers $headers -ContentType "application/json"
-			if ($protectionState.protectionStatus -eq "Protected") {
-				$out = "OK - $($vm.Name): VM is protected"
-			}
-			else {
-				$out = "CRITICAL - $($vm.Name): VM is NOT protected"
+			Try {
+				$protectionState = Invoke-RestMethod -Method Post -Uri $uri -Body $httpBody -Headers $headers -ContentType "application/json"
+				if ($protectionState.protectionStatus -eq "Protected") {
+					$out = "OK - $($vm.Name): VM is protected"
+				}
+				else {
+					$out = "CRITICAL - $($vm.Name): VM is NOT protected"
+				}
+			} Catch {
+				if($_.ErrorDetails.Message) {
+					$msg = ($_.ErrorDetails.Message | ConvertFrom-Json).error
+					$out = "CRITICAL - " + $msg.code + ": " + $msg.message
+				}
 			}
 		}
 		echo $out
@@ -115,9 +140,6 @@ while ($Jobs.Runspace.IsCompleted -contains $false) {
     Write-Host (Get-date).Tostring() "Still $running jobs running..."
 	Start-Sleep 1
 }
-$alert = 0
-$body_critical = ""
-$body_ok = ""
 foreach ($job in $Jobs) {
 	$current = $job.PowerShell.EndInvoke($job.Runspace)
 	$job.PowerShell.Dispose()
@@ -129,16 +151,16 @@ foreach ($job in $Jobs) {
 		$body_ok += $current + "`n"
 	}
 }
+
+# sort results
 $sorted = $body_critical.split("`n") | Sort-Object
 $body_critical = ""
 $sorted | % {$body_critical += $_ + "`n"}
+
 $sorted = $body_ok.split("`n") | Sort-Object
 $body_ok = ""
 $sorted | % {$body_ok += $_ + "`n"}
-if ($vms.count -eq 0) {
-	$alert++
-	$body_critical += "No VM or missing permission on subscription id: $subscriptionid`n"
-}
+
 # add ending status and signature to results
 $body_ok += "`n$signature`n"
 if ($alert) {
