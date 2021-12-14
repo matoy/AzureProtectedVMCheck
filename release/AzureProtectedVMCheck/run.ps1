@@ -22,7 +22,7 @@ Write-Host "PowerShell HTTP trigger function processed a request."
 # used AAD credentials read access to the specified subscription
 #
 # API ref:
-# https://docs.microsoft.com/en-us/rest/api/compute/virtual-machines/list
+# https://docs.microsoft.com/en-us/rest/api/compute/virtual-machines/list-all
 # https://docs.microsoft.com/fr-fr/rest/api/backup/backup-status/get
 #
 #####
@@ -129,6 +129,12 @@ foreach ($job in $Jobs) {
 		$body_ok += $current + "`n"
 	}
 }
+$sorted = $body_critical.split("`n") | Sort-Object
+$body_critical = ""
+$sorted | % {$body_critical += $_ + "`n"}
+$sorted = $body_ok.split("`n") | Sort-Object
+$body_ok = ""
+$sorted | % {$body_ok += $_ + "`n"}
 if ($vms.count -eq 0) {
 	$alert++
 	$body_critical += "No VM or missing permission on subscription id: $subscriptionid`n"
