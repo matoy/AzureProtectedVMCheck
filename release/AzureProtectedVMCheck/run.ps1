@@ -102,7 +102,8 @@ foreach ($vm in $vms) {
 	[void]$PowerShell.AddScript({
 	    Param ($headers, $subscriptionid, $vm, $exclusionsTab)
 
-		if ($exclusionsTab -contains $vm.name) {
+		$rg = $vm.id.split("/")[4]
+		if ($exclusionsTab -contains $vm.name -or $exclusionsTab -contains $rg) {
 			$out = "OK - $($vm.Name): VM excluded from protection check"
 		}
 		else {
